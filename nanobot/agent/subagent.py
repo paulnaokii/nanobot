@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import os
 import uuid
 from pathlib import Path
 from typing import Any
@@ -15,6 +16,8 @@ from nanobot.agent.tools.registry import ToolRegistry
 from nanobot.agent.tools.filesystem import ReadFileTool, WriteFileTool, EditFileTool, ListDirTool
 from nanobot.agent.tools.shell import ExecTool
 from nanobot.agent.tools.web import WebSearchTool, WebFetchTool
+
+SUB_AGENT_ITERATION = os.getenv("ENV_SUB_AGENT_ITERATION", 100)
 
 
 class SubagentManager:
@@ -123,7 +126,7 @@ class SubagentManager:
             ]
             
             # Run agent loop (limited iterations)
-            max_iterations = 15
+            max_iterations = int(SUB_AGENT_ITERATION)
             iteration = 0
             final_result: str | None = None
             
