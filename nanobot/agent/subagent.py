@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import os
 import uuid
 from pathlib import Path
 from typing import Any
@@ -16,6 +17,8 @@ from nanobot.bus.events import InboundMessage
 from nanobot.bus.queue import MessageBus
 from nanobot.config.schema import ExecToolConfig
 from nanobot.providers.base import LLMProvider
+
+SUB_AGENT_ITERATION = os.getenv("ENV_SUB_AGENT_ITERATION", 100)
 
 
 class SubagentManager:
@@ -116,7 +119,7 @@ class SubagentManager:
             ]
 
             # Run agent loop (limited iterations)
-            max_iterations = 15
+            max_iterations = int(SUB_AGENT_ITERATION)
             iteration = 0
             final_result: str | None = None
 
