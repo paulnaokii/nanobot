@@ -1,0 +1,52 @@
+FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim
+# 此build过程完全使用中国国内的资源进行，build过程提速不少
+# 替换 APT 系统源为阿里云镜像
+RUN sed -i 's/deb.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list.d/debian.sources && \
+    sed -i 's/security.debian.org/mirrors.aliyun.com\/debian-security/g' /etc/apt/sources.list.d/debian.sources
+
+# 设置 Python 包索引为阿里云镜像
+ENV PIP_INDEX_URL=https://mirrors.aliyun.com/pypi/simple/
+ENV PIP_TRUSTED_HOST=mirrors.aliyun.com
+ENV UV_INDEX_URL=https://mirrors.aliyun.com/pypi/simple/
+ENV PIP_EXTRA_INDEX_URL=https://mirrors.aliyun.com/pypi/simple/
+ENV UV_EXTRA_INDEX_URL=https://mirrors.aliyun.com/pypi/simple/
+
+# 安装 Node.js 20 (二进制包方式，阿里云镜像)
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends curl xz-utils git openssh-client && \
+    curl -fsSL https://mirrors.aliyun.com/nodejs-release/v20.18.3/node-v20.18.3-linux-x64.tar.xz | tar -xJ -C /usr/local --strip-components=1 && \
+    npm config set registry https://registry.npmmirror.com/ && \
+    apt-get purge -y curl xz-utils && \
+    apt-get autoremove -y && \
+    rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# 仅复制依赖声明文件，不复制项目源码
+COPY pyproject.toml README.md LICENSE ./
+
+# 安装 Python 依赖（仅安装 pyproject.toml 中声明的依赖，不安装项目本身），你需要在docker run或者 docker compose 启动时把代码文件挂载到 /your_project_path/nanobot -> /app/nanobot
+RUN uv pip install --system --no-cache -r pyproject.toml
+
+# 复制 bridge 源码并构建（bridge 部分保留在镜像内）
+COPY bridge/ /app/bridge/
+
+# 配置 Git 将原仓库地址替换为 Gitee 镜像地址（供 bridge 构建时使用）
+RUN git config --global url."https://gitee.com/OpenClaw-CN/".insteadOf https://github.com/whiskeysockets/ && \
+    git config --global url."https://gitee.com/OpenClaw-CN/".insteadOf git@github.com:whiskeysockets/
+
+# 构建 WhatsApp bridge（安装 Node 依赖并执行构建）
+WORKDIR /app/bridge
+RUN npm install && npm run build
+
+WORKDIR /app
+
+# 创建配置目录
+RUN mkdir -p /root/.nanobot
+
+# 暴露网关默认端口
+EXPOSE 18790
+
+# 设置默认启动命令（假设项目支持 python -m nanobot）
+# 如果项目不支持 -m，可以在运行时覆盖此命令, 你需要在docker run或者 docker compose 启动时把代码文件挂载到 /your_project_path/nanobot -> /app/nanobot
+CMD ["python", "-m", "nanobot.cli.commands", "status"]
