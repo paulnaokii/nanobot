@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import os
 import uuid
 from pathlib import Path
 from typing import Any
@@ -36,6 +37,8 @@ class _SubagentHook(AgentHook):
                 "Subagent [{}] executing: {} with arguments: {}",
                 self._task_id, tool_call.name, args_str,
             )
+
+SUB_AGENT_ITERATION = os.getenv("ENV_SUB_AGENT_ITERATION", 50)
 
 
 class SubagentManager:
@@ -140,7 +143,7 @@ class SubagentManager:
                 initial_messages=messages,
                 tools=tools,
                 model=self.model,
-                max_iterations=15,
+                max_iterations=int(SUB_AGENT_ITERATION),
                 max_tool_result_chars=self.max_tool_result_chars,
                 hook=_SubagentHook(task_id),
                 max_iterations_message="Task completed but no final response was generated.",

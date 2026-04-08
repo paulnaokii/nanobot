@@ -1,0 +1,76 @@
+FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim
+# 此build过程完全使用中国国内的资源进行，build过程提速不少
+# 替换 APT 系统源为阿里云镜像
+RUN sed -i 's/deb.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list.d/debian.sources && \
+    sed -i 's/security.debian.org/mirrors.aliyun.com\/debian-security/g' /etc/apt/sources.list.d/debian.sources
+
+# 设置 Python 包索引为阿里云镜像
+ENV PIP_INDEX_URL=https://mirrors.aliyun.com/pypi/simple/
+ENV PIP_TRUSTED_HOST=mirrors.aliyun.com
+ENV UV_INDEX_URL=https://mirrors.aliyun.com/pypi/simple/
+ENV PIP_EXTRA_INDEX_URL=https://mirrors.aliyun.com/pypi/simple/
+ENV UV_EXTRA_INDEX_URL=https://mirrors.aliyun.com/pypi/simple/
+
+# 安装 Node.js 20 (二进制包方式，阿里云镜像)
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends curl xz-utils git openssh-client && \
+    curl -fsSL https://mirrors.aliyun.com/nodejs-release/v20.18.3/node-v20.18.3-linux-x64.tar.xz | tar -xJ -C /usr/local --strip-components=1 && \
+    npm config set registry https://registry.npmmirror.com/ && \
+    apt-get purge -y curl xz-utils && \
+    apt-get autoremove -y && \
+    rm -rf /var/lib/apt/lists/*
+
+# 安装浏览器和playwright驱动
+RUN apt-get install chromium -y | python -m playwright install | python -m playwright install-deps
+# # 如果上述不行，请使用 npx playwright install --dry-run 查看需要下载的目录并手动下载安装
+# # 找到目标路径：首先，你需要知道对于你当前安装的 Playwright 版本，浏览器应该被放在哪里。运行以下命令，它会告诉你具体的下载地址和安装位置 ：
+
+# # bash
+# # npx playwright install --dry-run
+# # 以 Chromium 为例，输出可能会是：
+
+# # text
+# # Downloading Chromium 126.0.6478.126 (playwright build v1117) from https://playwright.azureedge.net/builds/chromium/1117/chromium-linux.zip
+# # Install location: /home/你的用户名/.cache/ms-playwright/chromium-1117
+# # 重点关注 Install location 这个路径。
+
+# # 放置并解压文件：
+
+# # 创建这个目标文件夹：mkdir -p /home/你的用户名/.cache/ms-playwright/chromium-1117
+
+# # 将你下载好的 zip 文件（例如 chromium-linux.zip）移动到这个文件夹里并解压：
+
+# # bash
+# # mv chromium-linux.zip /home/你的用户名/.cache/ms-playwright/chromium-1117/
+# # cd /home/你的用户名/.cache/ms-playwright/chromium-1117/
+# # unzip chromium-linux.zip
+# WORKDIR /app
+
+# 仅复制依赖声明文件，不复制项目源码
+COPY pyproject.toml README.md LICENSE ./
+
+# 安装 Python 依赖（仅安装 pyproject.toml 中声明的依赖，不安装项目本身），你需要在docker run或者 docker compose 启动时把代码文件挂载到 /your_project_path/nanobot -> /app/nanobot
+RUN uv pip install --system --no-cache -r pyproject.toml
+
+# 复制 bridge 源码并构建（bridge 部分保留在镜像内）
+COPY bridge/ /app/bridge/
+
+# 配置 Git 将原仓库地址替换为 Gitee 镜像地址（供 bridge 构建时使用）
+RUN git config --global url."https://gitee.com/OpenClaw-CN/".insteadOf https://github.com/whiskeysockets/ && \
+    git config --global url."https://gitee.com/OpenClaw-CN/".insteadOf git@github.com:whiskeysockets/
+
+# 构建 WhatsApp bridge（安装 Node 依赖并执行构建）
+WORKDIR /app/bridge
+RUN npm install && npm run build
+
+WORKDIR /app
+
+# 创建配置目录
+RUN mkdir -p /root/.nanobot
+
+# 暴露网关默认端口
+EXPOSE 18790
+
+# 设置默认启动命令（假设项目支持 python -m nanobot）
+# 如果项目不支持 -m，可以在运行时覆盖此命令, 你需要在docker run或者 docker compose 启动时把代码文件挂载到 /your_project_path/nanobot -> /app/nanobot
+CMD ["python", "-m", "nanobot.cli.commands", "status"]
